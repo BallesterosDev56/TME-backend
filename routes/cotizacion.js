@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const puppeteer = require('puppeteer');
+const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
 
@@ -52,21 +52,20 @@ router.post('/generar-cotizacion', async (req, res) => {
             }
 
             try {
-                // Configuraciones específicas para Puppeteer
-                const browser = await puppeteer.launch({
-                    headless: 'new',
-                    args: ['--no-sandbox', '--disable-setuid-sandbox']
+                // Configuraciones específicas para Playwright
+                const browser = await chromium.launch({
+                    headless: true
                 });
-                const page = await browser.newPage();
+                const context = await browser.newContext();
+                const page = await context.newPage();
                 
                 // Establecer tamaño A4
-                await page.setViewport({
+                await page.setViewportSize({
                     width: 794, // Ancho en píxeles para A4 a 96 DPI
                     height: 1123, // Alto en píxeles para A4 a 96 DPI
-                    deviceScaleFactor: 1,
                 });
                 
-                await page.setContent(html, { waitUntil: 'networkidle0' });
+                await page.setContent(html, { waitUntil: 'networkidle' });
                 
                 const outputPath = path.join(__dirname, '../output', `cotizacion_${cotizacionData.cotizacion_codigo}.pdf`);
                 
@@ -82,6 +81,7 @@ router.post('/generar-cotizacion', async (req, res) => {
                     }
                 });
 
+                await context.close();
                 await browser.close();
 
                 // Leer el archivo generado
@@ -106,4 +106,4 @@ router.post('/generar-cotizacion', async (req, res) => {
     }
 });
 
-module.exports = router; 
+module.exports = router;
