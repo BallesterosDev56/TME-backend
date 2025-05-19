@@ -3,6 +3,7 @@ const cors = require('cors');
 const { engine } = require('express-handlebars');
 const bodyParser = require('body-parser');
 const path = require('path');
+const puppeteer = require('puppeteer');
 const fs = require('fs');
 
 // Inicializar la aplicación
