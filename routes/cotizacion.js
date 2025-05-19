@@ -3,9 +3,14 @@ const router = express.Router();
 const puppeteer = require('puppeteer');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+const axios = require('axios');
+const FormData = require('form-data');
 
 // Endpoint para generar cotización
 router.post('/generar-cotizacion', async (req, res) => {
+    let tempFilePath = null;
+    
     try {
         const cotizacionData = req.body;
         
@@ -37,7 +42,7 @@ router.post('/generar-cotizacion', async (req, res) => {
             nombre_cliente: cotizacionData.nombre_cliente,
             productos: productos,
             total_cotizacion: cotizacionData.total_cotizacion.toLocaleString('es-CO'),
-            nombre_vendedor: cotizacionData.nombre_vendedor || 'Paola Barbosa' // Valor por defecto si no se proporciona
+            nombre_vendedor: cotizacionData.nombre_vendedor || 'Paola Barbosa'
         };
 
         // Renderizar la plantilla
@@ -57,17 +62,19 @@ router.post('/generar-cotizacion', async (req, res) => {
                 
                 // Establecer tamaño A4
                 await page.setViewport({
-                    width: 794, // Ancho en píxeles para A4 a 96 DPI
-                    height: 1123, // Alto en píxeles para A4 a 96 DPI
+                    width: 794,
+                    height: 1123,
                     deviceScaleFactor: 1,
                 });
                 
                 await page.setContent(html, { waitUntil: 'networkidle0' });
                 
-                const outputPath = path.join(__dirname, '../output', `cotizacion_${cotizacionData.cotizacion_codigo}.pdf`);
+                // Crear archivo temporal
+                tempFilePath = path.join(os.tmpdir(), `cotizacion_${cotizacionData.cotizacion_codigo}.pdf`);
                 
+                // Generar PDF
                 await page.pdf({
-                    path: outputPath,
+                    path: tempFilePath,
                     format: 'A4',
                     printBackground: true,
                     margin: {
@@ -75,31 +82,153 @@ router.post('/generar-cotizacion', async (req, res) => {
                         right: '0',
                         bottom: '0',
                         left: '0'
-                    }
+                    },
+                    preferCSSPageSize: true,
+                    displayHeaderFooter: false
                 });
 
                 await browser.close();
 
-                // Leer el archivo generado
-                const pdfBuffer = fs.readFileSync(outputPath);
-                const pdfBase64 = pdfBuffer.toString('base64');
+                // Verificar que el archivo temporal existe
+                if (!fs.existsSync(tempFilePath)) {
+                    throw new Error('El archivo PDF temporal no se generó correctamente');
+                }
 
-                // Devolver la respuesta con el PDF
-                res.status(200).json({
-                    success: true,
-                    mensaje: 'Cotización generada correctamente',
-                    pdf_base64: pdfBase64,
-                    filename: `cotizacion_${cotizacionData.cotizacion_codigo}.pdf`
-                });
+                console.log('Archivo PDF generado en:', tempFilePath);
+                console.log('Tamaño del archivo:', fs.statSync(tempFilePath).size, 'bytes');
+
+                try {
+                    // Implementación correcta de file.io según su documentación
+                    console.log('Iniciando subida a file.io...');
+                    
+                    // Crear un objeto FormData correctamente formateado
+                    const form = new FormData();
+                    form.append('file', fs.createReadStream(tempFilePath), {
+                        filename: `cotizacion_${cotizacionData.cotizacion_codigo}.pdf`,
+                        contentType: 'application/pdf'
+                    });
+                    
+                    // Añadir la expiración (1 semana)
+                    form.append('expires', '1w');
+                    
+                    // Usar curl como alternativa si todo lo demás falla
+                    const { exec } = require('child_process');
+                    const curlCommand = `curl -F "file=@${tempFilePath}" https://file.io?expires=1w`;
+                    
+                    exec(curlCommand, (error, stdout, stderr) => {
+                        if (error) {
+                            console.error('Error ejecutando curl:', error);
+                            // Intentar con transfer.sh como fallback
+                            useTransferSh();
+                            return;
+                        }
+                        
+                        try {
+                            const response = JSON.parse(stdout);
+                            console.log('Response de file.io via curl:', response);
+                            
+                            if (response.success && response.link) {
+                                // Eliminar archivo temporal
+                                if (tempFilePath && fs.existsSync(tempFilePath)) {
+                                    fs.unlinkSync(tempFilePath);
+                                }
+                                
+                                // Devolver la respuesta con la URL
+                                res.status(200).json({
+                                    success: true,
+                                    mensaje: 'Cotización generada correctamente',
+                                    secure_url: response.link,
+                                    filename: `cotizacion_${cotizacionData.cotizacion_codigo}.pdf`,
+                                    expires: response.expiry || 'No expiration provided'
+                                });
+                            } else {
+                                // Si hay un error con la respuesta, usar transfer.sh
+                                console.error('Error en la respuesta de file.io:', response);
+                                useTransferSh();
+                            }
+                        } catch (parseError) {
+                            console.error('Error parseando la respuesta de curl:', parseError);
+                            useTransferSh();
+                        }
+                    });
+                    
+                    // Función para usar transfer.sh como alternativa
+                    async function useTransferSh() {
+                        try {
+                            console.log('Intentando subir a transfer.sh como alternativa...');
+                            
+                            const transferResponse = await axios({
+                                method: 'put',
+                                url: `https://transfer.sh/cotizacion_${cotizacionData.cotizacion_codigo}.pdf`,
+                                data: fs.createReadStream(tempFilePath),
+                                headers: {
+                                    'Content-Type': 'application/pdf'
+                                },
+                                maxContentLength: Infinity,
+                                maxBodyLength: Infinity
+                            });
+                            
+                            // La respuesta de transfer.sh es directamente la URL como texto
+                            const fileUrl = transferResponse.data.trim();
+                            
+                            // Eliminar archivo temporal
+                            if (tempFilePath && fs.existsSync(tempFilePath)) {
+                                fs.unlinkSync(tempFilePath);
+                            }
+                            
+                            // Devolver la respuesta con la URL de transfer.sh
+                            res.status(200).json({
+                                success: true,
+                                mensaje: 'Cotización generada correctamente (usando transfer.sh)',
+                                secure_url: fileUrl,
+                                filename: `cotizacion_${cotizacionData.cotizacion_codigo}.pdf`,
+                                expires: '14 days (transfer.sh default)'
+                            });
+                        } catch (transferError) {
+                            console.error('Error también en transfer.sh:', transferError);
+                            
+                            // Si ambos servicios fallan, enviar el error
+                            res.status(500).json({ 
+                                error: 'Error al subir el archivo a file.io y a transfer.sh', 
+                                detalle: transferError.message
+                            });
+                        }
+                    }
+                } catch (error) {
+                    // Limpiar archivo temporal en caso de error
+                    if (tempFilePath && fs.existsSync(tempFilePath)) {
+                        fs.unlinkSync(tempFilePath);
+                    }
+                    console.error('Error al generar el PDF:', error);
+                    console.error('Stack trace:', error.stack);
+                    res.status(500).json({ 
+                        error: 'Error al generar el PDF', 
+                        detalle: error.message,
+                        stack: error.stack
+                    });
+                }
             } catch (error) {
+                // Limpiar archivo temporal en caso de error
+                if (tempFilePath && fs.existsSync(tempFilePath)) {
+                    fs.unlinkSync(tempFilePath);
+                }
                 console.error('Error al generar el PDF:', error);
-                res.status(500).json({ error: 'Error al generar el PDF', detalle: error.message });
+                console.error('Stack trace:', error.stack);
+                res.status(500).json({ 
+                    error: 'Error al generar el PDF', 
+                    detalle: error.message,
+                    stack: error.stack
+                });
             }
         });
     } catch (error) {
+        // Limpiar archivo temporal en caso de error
+        if (tempFilePath && fs.existsSync(tempFilePath)) {
+            fs.unlinkSync(tempFilePath);
+        }
         console.error('Error en el servidor:', error);
         res.status(500).json({ error: 'Error en el servidor', detalle: error.message });
     }
 });
 
-module.exports = router;
+module.exports = router; 

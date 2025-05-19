@@ -5,6 +5,7 @@ const bodyParser = require('body-parser');
 const path = require('path');
 const puppeteer = require('puppeteer');
 const fs = require('fs');
+const axios = require('axios');
 
 // Inicializar la aplicación
 const app = express();
@@ -32,6 +33,24 @@ if (!fs.existsSync(outputDir)) {
 // Importar rutas
 const cotizacionRoutes = require('./routes/cotizacion');
 app.use('/', cotizacionRoutes);
+
+// Function to upload file to file.io
+async function uploadFileToFileIO(filePath) {
+    try {
+        const fileData = fs.createReadStream(filePath);
+        const response = await axios.post('https://file.io', fileData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            }
+        });
+        console.log('File uploaded successfully:', response.data);
+    } catch (error) {
+        console.error('Error uploading file:', error);
+    }
+}
+
+// Example usage of the upload function
+// uploadFileToFileIO(path.join(outputDir, 'example.pdf'));
 
 // Iniciar el servidor
 app.listen(PORT, () => {
