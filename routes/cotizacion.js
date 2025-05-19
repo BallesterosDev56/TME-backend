@@ -7,9 +7,35 @@ const os = require('os');
 const axios = require('axios');
 const FormData = require('form-data');
 
+// Determinar si estamos en un entorno de producción
+const isProduction = process.env.NODE_ENV === 'production';
+console.log(`Ejecutando en modo: ${isProduction ? 'PRODUCCIÓN' : 'DESARROLLO'}`);
+
+// Directorio para almacenar PDFs - adaptado para entornos cloud
+// En Railway y similares, /tmp es uno de los pocos directorios donde se puede escribir
+const pdfStorageDir = isProduction 
+    ? path.join(os.tmpdir(), 'pdfs') // En producción usa /tmp/pdfs
+    : path.join(__dirname, '..', 'public', 'pdfs'); // En desarrollo usa public/pdfs
+
+console.log(`Directorio de almacenamiento de PDFs: ${pdfStorageDir}`);
+
+// Crear carpeta para almacenamiento si no existe
+if (!fs.existsSync(pdfStorageDir)) {
+    fs.mkdirSync(pdfStorageDir, { recursive: true });
+    console.log(`Carpeta de PDFs creada: ${pdfStorageDir}`);
+}
+
+// Función para generar un identificador único
+function generateUniqueId() {
+    const timestamp = Date.now().toString(36);
+    const randomStr = Math.random().toString(36).substring(2, 8);
+    return `${timestamp}_${randomStr}`;
+}
+
 // Endpoint para generar cotización
 router.post('/generar-cotizacion', async (req, res) => {
     let tempFilePath = null;
+    let finalFilePath = null;
     
     try {
         const cotizacionData = req.body;
@@ -69,8 +95,12 @@ router.post('/generar-cotizacion', async (req, res) => {
                 
                 await page.setContent(html, { waitUntil: 'networkidle0' });
                 
-                // Crear archivo temporal
-                tempFilePath = path.join(os.tmpdir(), `cotizacion_${cotizacionData.cotizacion_codigo}.pdf`);
+                // Generar un nombre de archivo único
+                const uniqueFileName = `cotizacion_${cotizacionData.cotizacion_codigo}_${generateUniqueId()}.pdf`;
+                
+                // Ruta para el archivo PDF
+                tempFilePath = path.join(os.tmpdir(), uniqueFileName);
+                finalFilePath = path.join(pdfStorageDir, uniqueFileName);
                 
                 // Generar PDF
                 await page.pdf({
@@ -97,121 +127,47 @@ router.post('/generar-cotizacion', async (req, res) => {
                 console.log('Archivo PDF generado en:', tempFilePath);
                 console.log('Tamaño del archivo:', fs.statSync(tempFilePath).size, 'bytes');
 
-                try {
-                    // Implementación correcta de file.io según su documentación
-                    console.log('Iniciando subida a file.io...');
-                    
-                    // Crear un objeto FormData correctamente formateado
-                    const form = new FormData();
-                    form.append('file', fs.createReadStream(tempFilePath), {
-                        filename: `cotizacion_${cotizacionData.cotizacion_codigo}.pdf`,
-                        contentType: 'application/pdf'
-                    });
-                    
-                    // Añadir la expiración (1 semana)
-                    form.append('expires', '1w');
-                    
-                    // Usar curl como alternativa si todo lo demás falla
-                    const { exec } = require('child_process');
-                    const curlCommand = `curl -F "file=@${tempFilePath}" https://file.io?expires=1w`;
-                    
-                    exec(curlCommand, (error, stdout, stderr) => {
-                        if (error) {
-                            console.error('Error ejecutando curl:', error);
-                            // Intentar con transfer.sh como fallback
-                            useTransferSh();
-                            return;
-                        }
-                        
-                        try {
-                            const response = JSON.parse(stdout);
-                            console.log('Response de file.io via curl:', response);
-                            
-                            if (response.success && response.link) {
-                                // Eliminar archivo temporal
-                                if (tempFilePath && fs.existsSync(tempFilePath)) {
-                                    fs.unlinkSync(tempFilePath);
-                                }
-                                
-                                // Devolver la respuesta con la URL
-                                res.status(200).json({
-                                    success: true,
-                                    mensaje: 'Cotización generada correctamente',
-                                    secure_url: response.link,
-                                    filename: `cotizacion_${cotizacionData.cotizacion_codigo}.pdf`,
-                                    expires: response.expiry || 'No expiration provided'
-                                });
-                            } else {
-                                // Si hay un error con la respuesta, usar transfer.sh
-                                console.error('Error en la respuesta de file.io:', response);
-                                useTransferSh();
-                            }
-                        } catch (parseError) {
-                            console.error('Error parseando la respuesta de curl:', parseError);
-                            useTransferSh();
-                        }
-                    });
-                    
-                    // Función para usar transfer.sh como alternativa
-                    async function useTransferSh() {
-                        try {
-                            console.log('Intentando subir a transfer.sh como alternativa...');
-                            
-                            const transferResponse = await axios({
-                                method: 'put',
-                                url: `https://transfer.sh/cotizacion_${cotizacionData.cotizacion_codigo}.pdf`,
-                                data: fs.createReadStream(tempFilePath),
-                                headers: {
-                                    'Content-Type': 'application/pdf'
-                                },
-                                maxContentLength: Infinity,
-                                maxBodyLength: Infinity
-                            });
-                            
-                            // La respuesta de transfer.sh es directamente la URL como texto
-                            const fileUrl = transferResponse.data.trim();
-                            
-                            // Eliminar archivo temporal
-                            if (tempFilePath && fs.existsSync(tempFilePath)) {
-                                fs.unlinkSync(tempFilePath);
-                            }
-                            
-                            // Devolver la respuesta con la URL de transfer.sh
-                            res.status(200).json({
-                                success: true,
-                                mensaje: 'Cotización generada correctamente (usando transfer.sh)',
-                                secure_url: fileUrl,
-                                filename: `cotizacion_${cotizacionData.cotizacion_codigo}.pdf`,
-                                expires: '14 days (transfer.sh default)'
-                            });
-                        } catch (transferError) {
-                            console.error('Error también en transfer.sh:', transferError);
-                            
-                            // Si ambos servicios fallan, enviar el error
-                            res.status(500).json({ 
-                                error: 'Error al subir el archivo a file.io y a transfer.sh', 
-                                detalle: transferError.message
-                            });
-                        }
-                    }
-                } catch (error) {
-                    // Limpiar archivo temporal en caso de error
-                    if (tempFilePath && fs.existsSync(tempFilePath)) {
-                        fs.unlinkSync(tempFilePath);
-                    }
-                    console.error('Error al generar el PDF:', error);
-                    console.error('Stack trace:', error.stack);
-                    res.status(500).json({ 
-                        error: 'Error al generar el PDF', 
-                        detalle: error.message,
-                        stack: error.stack
-                    });
+                // Copiar el archivo al directorio de almacenamiento final
+                fs.copyFileSync(tempFilePath, finalFilePath);
+                console.log(`PDF copiado a: ${finalFilePath}`);
+                
+                // Eliminar archivo temporal original si es diferente del final
+                if (tempFilePath !== finalFilePath && fs.existsSync(tempFilePath)) {
+                    fs.unlinkSync(tempFilePath);
+                    console.log(`Archivo temporal eliminado: ${tempFilePath}`);
                 }
+                
+                // Construir la URL para acceder al PDF 
+                let pdfUrl;
+                
+                if (isProduction) {
+                    // En producción, crear una URL que será manejada por el endpoint /pdf/:filename
+                    // Este endpoint servirá el archivo desde el directorio temporal
+                    const baseUrl = req.protocol + '://' + req.get('host');
+                    pdfUrl = `${baseUrl}/pdf/${uniqueFileName}`;
+                } else {
+                    // En desarrollo, usar la carpeta pública estática
+                    const baseUrl = req.protocol + '://' + req.get('host');
+                    pdfUrl = `${baseUrl}/pdfs/${uniqueFileName}`;
+                }
+                
+                // Devolver la respuesta con la URL del PDF
+                res.status(200).json({
+                    success: true,
+                    mensaje: 'Cotización generada correctamente',
+                    secure_url: pdfUrl,
+                    filename: uniqueFileName,
+                    expires: 'No expira (almacenamiento del servidor)'
+                });
             } catch (error) {
-                // Limpiar archivo temporal en caso de error
+                // Limpiar archivos temporales en caso de error
                 if (tempFilePath && fs.existsSync(tempFilePath)) {
                     fs.unlinkSync(tempFilePath);
                 }
+                if (finalFilePath && tempFilePath !== finalFilePath && fs.existsSync(finalFilePath)) {
+                    fs.unlinkSync(finalFilePath);
+                }
+                
                 console.error('Error al generar el PDF:', error);
                 console.error('Stack trace:', error.stack);
                 res.status(500).json({ 
@@ -222,13 +178,36 @@ router.post('/generar-cotizacion', async (req, res) => {
             }
         });
     } catch (error) {
-        // Limpiar archivo temporal en caso de error
+        // Limpiar archivos temporales en caso de error
         if (tempFilePath && fs.existsSync(tempFilePath)) {
             fs.unlinkSync(tempFilePath);
         }
+        if (finalFilePath && tempFilePath !== finalFilePath && fs.existsSync(finalFilePath)) {
+            fs.unlinkSync(finalFilePath);
+        }
+        
         console.error('Error en el servidor:', error);
         res.status(500).json({ error: 'Error en el servidor', detalle: error.message });
     }
 });
 
-module.exports = router; 
+// Endpoint para servir los PDFs en producción
+router.get('/pdf/:filename', (req, res) => {
+    const filename = req.params.filename;
+    const filePath = path.join(pdfStorageDir, filename);
+    
+    // Verificar si el archivo existe
+    if (fs.existsSync(filePath)) {
+        // Servir el archivo como descarga
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=${filename}`);
+        
+        // Crear un stream de lectura y enviarlo como respuesta
+        const fileStream = fs.createReadStream(filePath);
+        fileStream.pipe(res);
+    } else {
+        res.status(404).json({ error: 'Archivo no encontrado' });
+    }
+});
+
+module.exports = router;
