@@ -4,6 +4,10 @@ const puppeteer = require('puppeteer');
 const path = require('path');
 const fs = require('fs');
 
+router.get('/', (req, res) => {
+  res.send('Servidor funcionando');
+});
+
 // Endpoint para generar cotización
 router.post('/generar-cotizacion', async (req, res) => {
     try {
