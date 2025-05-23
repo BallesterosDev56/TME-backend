@@ -32,6 +32,14 @@ function generateUniqueId() {
     return `${timestamp}_${randomStr}`;
 }
 
+// Función para formatear números con separador de miles y decimales
+function formatCurrency(number) {
+    return new Intl.NumberFormat('es-CO', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(number);
+}
+
 // Endpoint para generar cotización
 router.post('/generar-cotizacion', async (req, res) => {
     let tempFilePath = null;
@@ -41,14 +49,12 @@ router.post('/generar-cotizacion', async (req, res) => {
         const cotizacionData = req.body;
         
         // Verificar que los datos necesarios estén presentes
-        if (!cotizacionData.cotizacion_codigo || !cotizacionData.products || !cotizacionData.nombre_cliente) {
+        if (!cotizacionData.cotizacion_codigo || !cotizacionData.products || !cotizacionData.total_cotizacion) {
             return res.status(400).json({ error: 'Faltan datos requeridos para la cotización' });
         }
 
         // Transformar los datos de los productos
         const productos = cotizacionData.products.map((producto, index) => {
-            // Formatear el precio con separadores de miles
-            const precioFormateado = producto.precio.toLocaleString('es-CO');
             const totalProducto = producto.precio * producto.cantidad;
             
             return {
@@ -56,19 +62,41 @@ router.post('/generar-cotizacion', async (req, res) => {
                 referencia: producto.id,
                 descripcion: producto.nombre,
                 cantidad: producto.cantidad,
-                precio_unitario: precioFormateado,
-                total: totalProducto.toLocaleString('es-CO')
+                precio_unitario: formatCurrency(producto.precio),
+                total: formatCurrency(totalProducto)
             };
         });
 
         // Datos para la plantilla
         const datosPlantilla = {
+            // Datos de la cotización
             cotizacion_codigo: cotizacionData.cotizacion_codigo,
             fecha_actual: cotizacionData.fecha_actual,
-            nombre_cliente: cotizacionData.nombre_cliente,
+            
+            // Datos del cliente
+            nombre_cliente: cotizacionData.cliente?.nombre_cliente || '',
+            documento_cliente: cotizacionData.cliente?.documento_cliente || '',
+            direccion_cliente: cotizacionData.cliente?.direccion_cliente || '',
+            telefono_cliente: cotizacionData.cliente?.telefono_cliente || '',
+            correo_cliente: cotizacionData.cliente?.correo_cliente || '',
+            tipo_cliente: cotizacionData.cliente?.tipo_cliente || '',
+            
+            // Datos de los productos
             productos: productos,
-            total_cotizacion: cotizacionData.total_cotizacion.toLocaleString('es-CO'),
-            nombre_vendedor: cotizacionData.nombre_vendedor || 'Paola Barbosa'
+            
+            // Totales
+            subtotal: formatCurrency(cotizacionData.total_cotizacion),
+            total_cotizacion: formatCurrency(cotizacionData.total_cotizacion),
+            
+            // Datos del vendedor
+            nombre_vendedor: cotizacionData.vendedor?.nombre || 'Paola Barbosa',
+            telefono_vendedor: cotizacionData.vendedor?.telefono || '',
+            email_vendedor: cotizacionData.vendedor?.email || '',
+            
+            // Datos adicionales
+            forma_pago: '100% Anticipado',
+            moneda: 'COP - Peso colombiano',
+            observaciones: cotizacionData.observaciones || ''
         };
 
         // Renderizar la plantilla

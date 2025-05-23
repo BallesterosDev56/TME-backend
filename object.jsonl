@@ -1,0 +1,27 @@
+{
+  "cotizacion_codigo": "COT-20250518-9945",
+  "products": [
+    {
+      "id": 92001,
+      "nombre": "Surgaflex 4 cm x 6 cm",
+      "precio": 230000,
+      "cantidad": 2
+    }
+  ],
+  "fecha_actual": "2025-05-18",
+  "cliente": {
+    "nombre_cliente": "Hospital Universitario San Ignacio",
+    "documento_cliente": "123456789",
+    "direccion_cliente": "Calle 123 #45-67",
+    "telefono_cliente": "1234567890",
+    "correo_cliente": "hospital@example.com",
+    "tipo_cliente": "Hospital"
+  },
+  "total_cotizacion": 460000,
+  "vendedor": {
+    "nombre": "Paola Barbosa",
+    "telefono": "3001234567",
+    "email": "paola@example.com"
+  },
+  "observaciones": "Entrega en 5 días hábiles"
+}
