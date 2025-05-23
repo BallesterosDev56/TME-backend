@@ -56,13 +56,23 @@ router.post('/generar-cotizacion', async (req, res) => {
         // Transformar los datos de los productos
         const productos = cotizacionData.products.map((producto, index) => {
             const totalProducto = producto.precio * producto.cantidad;
-            
+            const cantidadPorCaja = 10;
+            if (producto.id == 305 || producto.id == 92001) {
+                cantidadPorCaja = 5;
+            }
+
             return {
                 item: index + 1,
                 referencia: producto.id,
                 descripcion: producto.nombre,
+                unidad_medida : "",
+                cantidad_por_caja: cantidadPorCaja,
                 cantidad: producto.cantidad,
+                precio_total_por_caja: formatCurrency(producto.precio),
+                iva: 0,
+                valor_iva: 0,
                 precio_unitario: formatCurrency(producto.precio),
+                subtotal: formatCurrency(totalProducto),
                 total: formatCurrency(totalProducto)
             };
         });
@@ -89,12 +99,12 @@ router.post('/generar-cotizacion', async (req, res) => {
             total_cotizacion: formatCurrency(cotizacionData.total_cotizacion),
             
             // Datos del vendedor
-            nombre_vendedor: cotizacionData.vendedor?.nombre || 'Paola Barbosa',
+            nombre_vendedor: cotizacionData.vendedor?.nombre_completo || '',
             telefono_vendedor: cotizacionData.vendedor?.telefono || '',
             email_vendedor: cotizacionData.vendedor?.email || '',
             
             // Datos adicionales
-            forma_pago: '100% Anticipado',
+            forma_pago: '   100% Anticipado',
             moneda: 'COP - Peso colombiano',
             observaciones: cotizacionData.observaciones || ''
         };
