@@ -56,7 +56,7 @@ router.post('/generar-cotizacion', async (req, res) => {
         // Transformar los datos de los productos
         const productos = cotizacionData.products.map((producto, index) => {
             const totalProducto = producto.precio * producto.cantidad;
-            const cantidadPorCaja = 10;
+            let cantidadPorCaja = 10;
             if (producto.id == 305 || producto.id == 92001) {
                 cantidadPorCaja = 5;
             }
