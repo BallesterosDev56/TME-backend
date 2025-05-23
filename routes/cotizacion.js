@@ -116,8 +116,8 @@ router.post('/generar-cotizacion', async (req, res) => {
                 
                 // Establecer tamaño A4 
                 await page.setViewport({
-                    width: 1123,
-                    height: 794,
+                    width: 2480,
+                    height: 1754,
                     deviceScaleFactor: 1,
                 });
                 
