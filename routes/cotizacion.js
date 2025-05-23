@@ -114,14 +114,17 @@ router.post('/generar-cotizacion', async (req, res) => {
                 });
                 const page = await browser.newPage();
                 
-                // Establecer tamaño A4 
+                // Establecer tamaño A4 horizontal (297mm x 210mm)
                 await page.setViewport({
-                    width: 2480,
-                    height: 1754,
-                    deviceScaleFactor: 1,
+                    width: 2480,  // ~297mm a 210 DPI
+                    height: 1754, // ~210mm a 210 DPI
+                    deviceScaleFactor: 2,
                 });
                 
-                await page.setContent(html, { waitUntil: 'networkidle0' });
+                await page.setContent(html, { 
+                    waitUntil: 'networkidle0',
+                    timeout: 30000
+                });
                 
                 // Generar un nombre de archivo único
                 const uniqueFileName = `cotizacion_${cotizacionData.cotizacion_codigo}_${generateUniqueId()}.pdf`;
@@ -130,10 +133,11 @@ router.post('/generar-cotizacion', async (req, res) => {
                 tempFilePath = path.join(os.tmpdir(), uniqueFileName);
                 finalFilePath = path.join(pdfStorageDir, uniqueFileName);
                 
-                // Generar PDF
+                // Generar PDF en formato horizontal
                 await page.pdf({
                     path: tempFilePath,
                     format: 'A4',
+                    landscape: true,
                     printBackground: true,
                     margin: {
                         top: '0',
@@ -142,7 +146,8 @@ router.post('/generar-cotizacion', async (req, res) => {
                         left: '0'
                     },
                     preferCSSPageSize: true,
-                    displayHeaderFooter: false
+                    displayHeaderFooter: false,
+                    scale: 0.7 // Ajustar escala para que todo el contenido quepa
                 });
 
                 await browser.close();
