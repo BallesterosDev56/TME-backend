@@ -147,7 +147,7 @@ router.post('/generar-cotizacion', async (req, res) => {
                     },
                     preferCSSPageSize: true,
                     displayHeaderFooter: false,
-                    scale: 0.7 // Ajustar escala para que todo el contenido quepa
+                    scale: 0.9 // Ajustar escala para que todo el contenido quepa
                 });
 
                 await browser.close();
