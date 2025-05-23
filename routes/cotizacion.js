@@ -101,7 +101,7 @@ router.post('/generar-cotizacion', async (req, res) => {
             // Datos del vendedor
             nombre_vendedor: cotizacionData.vendedor?.nombre_completo || '',
             telefono_vendedor: cotizacionData.vendedor?.telefono || '',
-            correo_vendedor: cotizacionData.vendedor?.correo_vendedor || '',
+            correo_vendedor: cotizacionData.vendedor?.correo || '',
             
             // Datos adicionales
             forma_pago: '   100% Anticipado',
