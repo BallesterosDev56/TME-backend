@@ -126,8 +126,8 @@ router.post('/generar-cotizacion', async (req, res) => {
                 
                 // Establecer tamaño A4 horizontal (297mm x 210mm)
                 await page.setViewport({
-                    width: 2480,  // ~297mm a 210 DPI
-                    height: 1754, // ~210mm a 210 DPI
+                    width: 1754,  // ~297mm a 210 DPI
+                    height: 2480, // ~210mm a 210 DPI
                     deviceScaleFactor: 2,
                 });
                 
